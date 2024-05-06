@@ -42,7 +42,7 @@ class DSTARLITE:
         self.current_state = None                                               # For deciding to which state to move to next
         self.prev_state = None                                                  # Previous state, after making the action
         self.flag = 0
-        self.to_change_coords = []                                              # Stores coordinates that needs to be changed
+        self.to_changed_coords = []                                              # Stores coordinates that needs to be changed
         
         self.graph_grid_world[self.goal_state[0]][self.goal_state[1]].rhs = 0   # Setting the rhs of goal state to zero
         self.graph_grid_world[self.goal_state[0]][self.goal_state[1]].key = 0   # Setting the key of goal state to zero

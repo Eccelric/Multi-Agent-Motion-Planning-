@@ -15,6 +15,66 @@ import time
 import copy
 import numpy as np
 
+def not_all_at_goal(list_robots):
+    bool_1 = not list_robots[0].robot.robot_at_goal()
+    for i in range(1, len(list_robots)):
+        bool_1 = bool_1 or not list_robots[i].robot.robot_at_goal()
+    return bool_1
+
+def move_to(list_robots):
+    if sim_interface.start_simulation():
+        for robot in list_robots:
+            robot.robot.localize_robot()
+            if not robot.flag:
+                action = robot.action_from_states(robot.prev_state, robot.current_state)
+                #robot.path.append(action)
+                robot.robot.goal_state = robot.action_to_actuation(robot.old_goal, action)
+                robot.old_goal = robot.robot.goal_state
+        start_time = time.time()
+        curr_time = time.time()
+        while not_all_at_goal(list_robots):
+            if curr_time - start_time > 20.0:
+                break
+            for robot in list_robots:
+                if not robot.flag:
+                    robot.robot.run_controller()
+            curr_time = time.time()
+        for robot in list_robots:
+            robot.robot.setvel_pioneer(0.0, 0.0)
+    else:
+        print('Failed to start Simulation')
+
+def collision_checker(list_robots):
+    
+    for robot in list_robots:
+        if len(robot.to_changed_coords) != 0:
+            for coord in robot.to_changed_coords:
+                coord[1] = 1                                                     # Convert from obstacle index to free index
+            changed_coords_robot = robot.wait_for_changes(robot.to_changed_coords)
+            for coord in changed_coords_robot:
+                xj = coord
+                robot.update_vertex(xj)
+            robot.compute_shortest_path()
+            robot.current_state = robot.prev_state
+            get_current_go_to_state(robot)       
+        
+    for robot in list_robots:
+        for sub_robot in list_robots:
+            if sub_robot.id <= robot.id or sub_robot.flag == 1:
+                continue
+            if robot.current_state == sub_robot.current_state:
+                sub_robot.to_changed_coords.append([[robot.current_state], 16])
+            if robot.prev_state == sub_robot.current_state and robot.current_state == sub_robot.prev_state:
+                sub_robot.to_changed_coords.append([[robot.prev_state], 16])
+            
+            changed_coords_sub_robot = sub_robot.wait_for_changes(sub_robot.to_changed_coords)
+            for coord in changed_coords_sub_robot:
+                xj = coord
+                sub_robot.update_vertex(xj)
+            sub_robot.compute_shortest_path()
+            sub_robot.current_state = sub_robot.prev_state
+            get_current_go_to_state(sub_robot)
+
 def not_at_goal_of_robot_all(list_of_robots):
     store_result = []
     for robot in list_of_robots:
@@ -58,7 +118,7 @@ def main():
         for i in range(len(list_robots)):
             list_robots[i].robot = sim_interface.Pioneer(list_robots[i].id)
             list_robots[i].robot.localize_robot()
-            list_robots[i].old_goal = [list_robots[i].current_state[0], list_robots[i].current_state[1]]
+            list_robots[i].old_goal = [list_robots[i].robot.current_state[0], list_robots[i].robot.current_state[1]]
     else:
         print ('Failed connecting to remote API server')
         
@@ -80,8 +140,19 @@ def main():
             else:
                 robot.flag = 1
             print(f"robot {i + 1} : {robot.current_state}")
+            
+        collision_checker(list_robots)
+        move_to(list_robots)
         
+        flags = list_robots[0].flag
+        for i in range(1, len(list_robots)):
+            flags = flags and list_robots[i].flag
+        if flags:
+            break
         
+    time.sleep(5.0)
+    sim_interface.sim_shutdown()
+    time.sleep(2.0)
     
 #run
 if __name__ == '__main__':
