@@ -44,17 +44,20 @@ class Maze:
           goal = self.getGoalState()
           self.map_plot_copy[start[0]][start[1]] = maze_maps.start_id
           self.map_plot_copy[goal[0]][goal[1]] = maze_maps.goal_id
+          plt.title(f"Robot : {self.number}")
           plt.imshow(self.map_plot_copy, cmap=plt.cm.tab20c, norm=self.plot_colormap_norm)
           plt.show()
       
   # default constructor
-  def __init__(self, id):
+  def __init__(self, id, states, number):
       """
       Sets the map as defined in file maze_maps
       """
       #Set up the map to be used
-      self.maze_map = maze_maps.maps_dictionary[id]
+      self.maze_map = copy.deepcopy(maze_maps.maps_dictionary[id])
       self.state_expansion_counter = 0
+      self.map_states = states
+      self.number = number
       if enable_plots:
           self.map_plot_copy = copy.deepcopy(self.maze_map.map_data)
           self.plot_map()
@@ -64,14 +67,14 @@ class Maze:
      """
      Returns the start state for the search problem 
      """
-     start_state = self.maze_map.start
+     start_state = self.map_states[0]
      return start_state
  
   def getGoalState(self):
      """
      Returns the start state for the search problem 
      """
-     goal_state =  self.maze_map.goal
+     goal_state =  self.map_states[1]
      return goal_state
     
   def isGoalState(self, state):

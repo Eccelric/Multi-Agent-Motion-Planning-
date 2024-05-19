@@ -4,23 +4,21 @@ import maze_maps
 
 import sim_interface
 import maze
+import random
 
 class DSTARLITE:
     
     class Node:
-        def __init__(self, x, y, g = float('inf'), rhs = float('inf'), parent = None):
+        def __init__(self, x, y, g = float('inf'), rhs = float('inf')):
             self.x = x
             self.y = y
             self.g = g
             self.rhs = rhs
-            self.key = min(self.g, self.rhs)
-            self.parent = parent
-            
-            
+                
     def __init__(self, problem, states, iden):
         self.problem = problem
         self.open_list = []
-        #self.path=[]
+        self.km = 0
         self.id = iden
         self.state = states[iden-1]                                             # State contains Start and Goal state
         self.problem.maze_map.map_data[self.state[0][0]][self.state[0][1]] = 3  # Start State
@@ -39,17 +37,25 @@ class DSTARLITE:
         self.graph_grid_world = [[self.Node(x, y) for x in range(num_rows)] for y in range(num_cols)]
         self.start_state = self.state[0]
         self.goal_state = self.state[1]
-        self.current_state = None                                               # For deciding to which state to move to next
-        self.prev_state = None                                                  # Previous state, after making the action
+        self.next_state = None                                                   # For deciding to which state to move to next
+        self.last_state = None
+        self.slast = self.start_state                                                     # Previous state, after making the action
         self.flag = 0
-        self.to_changed_coords = []                                              # Stores coordinates that needs to be changed
+        self.FLAG = 0
+        self.to_changed_coords = []                                                 # Stores coordinates that needs to be changed
+        self.charge = random.uniform(20, 100)                                       # To store the charge available on the robot
+                                                                                    # For each step the robot takes charge is reduced by 0.25 %
         
-        self.graph_grid_world[self.goal_state[0]][self.goal_state[1]].rhs = 0   # Setting the rhs of goal state to zero
-        self.graph_grid_world[self.goal_state[0]][self.goal_state[1]].key = 0   # Setting the key of goal state to zero
-        self.open_list.append(self.goal_state)                                  # Adding goal state to open list
+        
+        self.graph_grid_world[self.goal_state[0]][self.goal_state[1]].rhs = 0       # Setting the rhs of goal state to zero
+        self.Calculate_key(self.goal_state)                                         # Setting the key of goal state to zero
+        self.open_list.append(self.goal_state)                                      # Adding goal state to open list
+        
+    def h(self, s1, s2):
+        return abs(s1[0] - s2[0]) + abs(s1[1] - s2[1])
     
-    def is_locally_inconsistent(self, state):                                   # Function to check if the state is locally inconsistent
-        x, y = state
+    def is_locally_inconsistent(self, state):                                       # Function to check if the state is locally inconsistent
+        x, y = state 
         if self.graph_grid_world[x][y].g == self.graph_grid_world[x][y].rhs:
             return False
         return True
@@ -59,43 +65,41 @@ class DSTARLITE:
             return float('inf')
         elif self.problem.maze_map.map_data[state[0]][state[1]] == maze_maps.free_space_id2:
             return(maze_maps.free_space_id2_cost)
-        elif self.problem.maze_map.map_data[state[0]][state[1]] == maze_maps.free_space_id1 or self.problem.maze_map.map_data[state[0]][state[1]] == maze_maps.start_id:
+        elif self.problem.maze_map.map_data[state[0]][state[1]] == maze_maps.free_space_id1 or self.problem.maze_map.map_data[state[0]][state[1]] == maze_maps.goal_id:
             return(maze_maps.free_space_id1_cost) 
         else:
             return(maze_maps.changed_obs_id_cost) 
     
     def update_rhs(self, state):                                                # Function for updating rhs value
         x, y = state
-        step_cost = self.get_step_cost([x, y])
         successors = self.problem.getSuccessors([x, y])                         # [[x, y], required action, step cost]
         self.graph_grid_world[x][y].rhs = float('inf')
         for successor in successors:
             next_state, next_action, _ = successor
+            step_cost = self.get_step_cost(next_state)
             g = self.graph_grid_world[next_state[0]][next_state[1]].g
             if g + step_cost < self.graph_grid_world[x][y].rhs:
                 self.graph_grid_world[x][y].rhs = g + step_cost
-                self.graph_grid_world[x][y].parent = next_state
     
-    def update_key(self, state):
+    def Calculate_key(self, state):
         x, y = state
-        self.graph_grid_world[x][y].key = min(self.graph_grid_world[x][y].g, self.graph_grid_world[x][y].rhs)
+        self.graph_grid_world[x][y].key = [min(self.graph_grid_world[x][y].g, self.graph_grid_world[x][y].rhs) + self.h(self.slast, state) + self.km, min(self.graph_grid_world[x][y].g, self.graph_grid_world[x][y].rhs)]
     
     def update_vertex(self, state):
         x, y = state
+        print(f"Changed : {x, y}")
+        if self.id == 5:
+            print(f"Checking : {self.graph_grid_world[x][y].rhs}")
         if x != self.goal_state[0] or y != self.goal_state[1]:
-            #print("reached update")
             self.update_rhs(state)
-            self.update_key(state)
+            if self.id == 5:
+                print(f"Checking : {self.graph_grid_world[x][y].rhs}")
+        if state in self.open_list:
+            self.open_list.remove(state)
         
         if self.graph_grid_world[x][y].g != self.graph_grid_world[x][y].rhs:
-            #print(2)
-            flag = 0
-            for s in self.open_list:
-                if s[0] == state[0] and s[1] == state[1]:
-                    flag = 1
-                    break
-            if flag == 0:
-                self.open_list.append(state)
+            self.Calculate_key(state)
+            self.open_list.append(state)
         
     def change(self, states):
         for all_states, score in states:
@@ -136,42 +140,63 @@ class DSTARLITE:
     def action_to_actuation(self, current_state, action):
         current_x, current_y = current_state
         if action == 'up':
-            return [current_x - 0.508, current_y]
+            return [current_x - 1.0, current_y]
         elif action == 'down':
-            return [current_x + 0.508, current_y]
+            return [current_x + 1.0, current_y]
         elif action == 'right':
-            return [current_x, current_y + 0.508]
+            return [current_x, current_y + 1.0]
         elif action == 'left':
-            return [current_x, current_y - 0.508]
+            return [current_x, current_y - 1.0]
         else:
             return f"The given action ({action}) is an Invalid action"
+        
+    def Get_priority_state(self):
+        min_state = self.open_list[0]
+        min_key = self.graph_grid_world[min_state[0]][min_state[1]].key
+        for state in self.open_list:
+            key = self.graph_grid_world[state[0]][state[1]].key
+            if key[0] < min_key[0] or (key[0] == min_key[0] and key[1] <= min_key[1]):
+                min_state = state
+                min_key = key
+        return min_state
     
-    def heuristic(self, obj):
-        return abs(obj[0] - self.start_state[0]) + abs(obj[1] - self.start_state[1])
+    def Compare_keys(self, s1, s2):
+        key_1 = self.graph_grid_world[s1[0]][s1[1]].key
+        key_2 = self.graph_grid_world[s2[0]][s2[1]].key
+        if key_1[0] < key_2[0] or (key_1[0] == key_2[0] and key_1[1] <= key_2[1]):
+            return True
+        return False
     
     def compute_shortest_path(self):
-        xi = min(self.open_list, key = lambda obj : self.graph_grid_world[obj[0]][obj[1]].key + self.heuristic(obj))
-        print(xi, self.graph_grid_world[xi[0]][xi[1]].key, self.start_state, self.graph_grid_world[self.start_state[0]][self.start_state[1]].key) 
+        self.Calculate_key(self.slast)
+        xi = self.Get_priority_state()
         self.count += 1
-        while self.graph_grid_world[xi[0]][xi[1]].key < self.graph_grid_world[self.start_state[0]][self.start_state[1]].key or self.is_locally_inconsistent(self.start_state):
-            if self.graph_grid_world[xi[0]][xi[1]].g > self.graph_grid_world[xi[0]][xi[1]].rhs:
+        while self.Compare_keys(xi, self.slast) or self.is_locally_inconsistent(self.slast):
+            kold = self.graph_grid_world[xi[0]][xi[1]].key
+            self.open_list.remove(xi)
+            self.Calculate_key(xi)
+            if kold < self.graph_grid_world[xi[0]][xi[1]].key:
+                self.open_list.append(xi)
+            elif self.graph_grid_world[xi[0]][xi[1]].g > self.graph_grid_world[xi[0]][xi[1]].rhs:
                 self.graph_grid_world[xi[0]][xi[1]].g = self.graph_grid_world[xi[0]][xi[1]].rhs
-                self.open_list.remove(xi)
+                successors = self.problem.getSuccessors([xi[0], xi[1]])
+                for successor in successors:
+                    xj = successor[0]
+                    self.update_vertex(xj)
+                    
             else:
                 self.graph_grid_world[xi[0]][xi[1]].g = float('inf')
                 self.update_vertex(xi)
-                
-            successors = self.problem.getSuccessors([xi[0], xi[1]])
-            for successor in successors:
-                xj = successor[0]
-                self.update_vertex(xj)
+                successors = self.problem.getSuccessors([xi[0], xi[1]])
+                for successor in successors:
+                    xj = successor[0]
+                    self.update_vertex(xj)
             
-            #print(self.open_list)
             if len(self.open_list) != 0:
-                xi = min(self.open_list, key = lambda obj : self.graph_grid_world[obj[0]][obj[1]].key + self.heuristic(obj))
-                self.count += 1
-            print(xi, self.graph_grid_world[xi[0]][xi[1]].key, self.start_state, self.graph_grid_world[self.start_state[0]][self.start_state[1]].key)
-        print(f"Number of nodes expanded is : {self.count}")
+                xi = self.Get_priority_state()
+                self.Calculate_key(self.slast)
+                self.count += 1 
+        print(f"Number of nodes expanded for robot : {self.id} is : {self.count}")
     
         
 
