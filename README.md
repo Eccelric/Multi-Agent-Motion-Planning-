@@ -7,6 +7,6 @@ The second set of start and goal states are for map with three robots, the corre
 \
 The third set of start and goal states are for map with three robots, while running that comment the goal reordering code (4 line code) below start and goal states assignment \
 Alse comment the first states assignment below the goal reordering code and uncomment the states assignment line below that, the corresponding simulation is : mobile robot_old - Copy.ttt \
-\
+
 
 
